@@ -201,18 +201,23 @@ function load(){
   db.ref("tournament/scores").on("value",snap=>{
     const data=snap.val()||{};
 
-    document.querySelectorAll("input").forEach(inp=>{
-      const row=inp.closest("tr").rowIndex-1;
-      const col=inp.parentElement.cellIndex-1;
+    document.querySelectorAll("#scoreTable input").forEach(inp=>{
+        const tr = inp.closest("tr");
+        if(!tr) return;
 
-      if(row<0||col<0) return;
+        const row = tr.rowIndex-1;
+        const col = inp.parentElement.cellIndex-1;
 
-      const p1=players[row];
-      const p2=players[col];
+        if(row<0 || col<0) return;
+        if(!players[row] || !players[col]) return;
 
-      const key=`${p1}_${p2}`;
-      if(data[key]) inp.value=data[key];
+        const p1=players[row];
+        const p2=players[col];
+
+        const key=`${p1}_${p2}`;
+        if(data[key]) inp.value=data[key];
     });
+
 
     calc();
   });
@@ -224,15 +229,21 @@ function calc(){
     stats[p]={win:0,lose:0,small:0};
   });
 
-  document.querySelectorAll("input").forEach(inp=>{
+  document.querySelectorAll("#scoreTable input").forEach(inp=>{
+    const tr = inp.closest("tr");
+    if(!tr) return;
+
     const val=inp.value;
     if(!val.includes(":")) return;
 
     const [a,b]=val.split(":").map(Number);
     if(isNaN(a)||isNaN(b)) return;
 
-    const row=inp.closest("tr").rowIndex-1;
-    const col=inp.parentElement.cellIndex-1;
+    const row = tr.rowIndex-1;
+    const col = inp.parentElement.cellIndex-1;
+
+    if(row<0 || col<0) return;
+    if(!players[row] || !players[col]) return;
 
     const p1=players[row];
     const p2=players[col];
@@ -243,7 +254,7 @@ function calc(){
     if(a>b){
       stats[p1].win++;
       stats[p2].lose++;
-    }else{
+    }else if(b>a){
       stats[p2].win++;
       stats[p1].lose++;
     }
