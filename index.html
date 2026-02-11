@@ -1,0 +1,225 @@
+```html
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>循環賽系統</title>
+
+<style>
+body{
+  font-family: Arial;
+  margin:10px;
+}
+.container{
+  display:flex;
+  flex-wrap:wrap;
+  gap:20px;
+}
+table{
+  border-collapse: collapse;
+  font-size:14px;
+}
+td,th{
+  border:1px solid #ccc;
+  padding:6px;
+  text-align:center;
+}
+input{
+  width:55px;
+  text-align:center;
+}
+.rank{
+  font-size:16px;
+}
+@media(max-width:800px){
+  .container{flex-direction:column;}
+}
+</style>
+</head>
+<body>
+
+<h2>循環賽系統</h2>
+
+<div>
+玩家名稱：
+<input id="playerNames" style="width:300px"
+placeholder="用逗號分隔 例: A,B,C,D,E,F,G,H">
+<button onclick="setPlayers()">建立賽表</button>
+</div>
+
+<br>
+
+<div class="container">
+<div>
+<h3>對戰輸入</h3>
+<table id="scoreTable"></table>
+</div>
+
+<div>
+<h3>排名</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>玩家</th>
+<th>勝</th>
+<th>敗</th>
+<th>小分</th>
+</tr>
+</thead>
+<tbody id="rankBody"></tbody>
+</table>
+</div>
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<script>
+// 🔴 貼上你的 firebaseConfig
+const firebaseConfig = {
+  apiKey: "AIzaSyCtXt_zgFXgAaUJxq-WFPJvkAQ5agegDok",
+  authDomain: "gscrl-ranking-system.firebaseapp.com",
+  databaseURL: "https://gscrl-ranking-system-default-rtdb.firebaseio.com",
+  projectId: "gscrl-ranking-system",
+  storageBucket: "gscrl-ranking-system.firebasestorage.app",
+  messagingSenderId: "402703359156",
+  appId: "1:402703359156:web:ac3cb76bbb0288f5cc4be1"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+let players=[];
+let stats={};
+
+function setPlayers(){
+  const text=document.getElementById("playerNames").value;
+  players=text.split(",").map(x=>x.trim());
+  db.ref("tournament/players").set(players);
+}
+
+// 監聽玩家
+db.ref("tournament/players").on("value",snap=>{
+  if(!snap.exists()) return;
+  players=snap.val();
+  buildTable();
+});
+
+// 建立表格
+function buildTable(){
+  const table=document.getElementById("scoreTable");
+  table.innerHTML="";
+
+  let header="<tr><th></th>";
+  players.forEach(p=> header+=`<th>${p}</th>`);
+  header+="</tr>";
+  table.innerHTML+=header;
+
+  players.forEach((p1,i)=>{
+    let row=`<tr><th>${p1}</th>`;
+    players.forEach((p2,j)=>{
+      if(i===j){
+        row+="<td>-</td>";
+      }else if(i<j){
+        row+=`<td>
+        <input placeholder="2:1"
+        onchange="saveScore('${p1}','${p2}',this.value)">
+        </td>`;
+      }else{
+        row+="<td></td>";
+      }
+    });
+    row+="</tr>";
+    table.innerHTML+=row;
+  });
+
+  loadScores();
+}
+
+// 儲存
+function saveScore(p1,p2,val){
+  db.ref(`tournament/scores/${p1}_${p2}`).set(val);
+}
+
+// 監聽比分
+function loadScores(){
+  db.ref("tournament/scores").on("value",snap=>{
+    if(!snap.exists()) return;
+
+    const data=snap.val();
+    document.querySelectorAll("input").forEach(inp=>{
+      const p1=inp.closest("td").parentElement.cells[0].innerText;
+      const col=inp.parentElement.cellIndex;
+      const p2=players[col-1];
+
+      const key=`${p1}_${p2}`;
+      if(data[key]) inp.value=data[key];
+    });
+
+    calc();
+  });
+}
+
+function calc(){
+  stats={};
+  players.forEach(p=>{
+    stats[p]={win:0,lose:0,small:0};
+  });
+
+  document.querySelectorAll("input").forEach(inp=>{
+    const val=inp.value;
+    if(!val.includes(":")) return;
+
+    const [a,b]=val.split(":").map(Number);
+    if(isNaN(a)||isNaN(b)) return;
+
+    const row=inp.closest("tr").rowIndex-1;
+    const col=inp.parentElement.cellIndex-1;
+
+    const p1=players[row];
+    const p2=players[col];
+
+    stats[p1].small+=a-b;
+    stats[p2].small+=b-a;
+
+    if(a>b){
+      stats[p1].win++;
+      stats[p2].lose++;
+    }else{
+      stats[p2].win++;
+      stats[p1].lose++;
+    }
+  });
+
+  renderRank();
+}
+
+function renderRank(){
+  const arr=players.map(p=>({name:p,...stats[p]}));
+
+  arr.sort((a,b)=>{
+    if(b.win!==a.win) return b.win-a.win;
+    return b.small-a.small;
+  });
+
+  const body=document.getElementById("rankBody");
+  body.innerHTML="";
+
+  arr.forEach((p,i)=>{
+    body.innerHTML+=`
+    <tr class="rank">
+    <td>${i+1}</td>
+    <td>${p.name}</td>
+    <td>${p.win}</td>
+    <td>${p.lose}</td>
+    <td>${p.small}</td>
+    </tr>`;
+  });
+}
+</script>
+</body>
+</html>
+```
