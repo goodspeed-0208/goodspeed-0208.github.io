@@ -8,29 +8,62 @@
 <style>
 body{
   font-family: Arial;
-  margin:10px;
+  margin:0;
+  background:#111;
+  color:#fff;
 }
+
+.top{
+  padding:10px;
+  background:#222;
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+button{
+  padding:8px 14px;
+  border:0;
+  border-radius:6px;
+  background:#3a7afe;
+  color:#fff;
+  font-size:14px;
+}
+
+input{
+  padding:6px;
+  font-size:16px;
+}
+
 .container{
   display:flex;
   flex-wrap:wrap;
   gap:20px;
+  padding:10px;
 }
+
 table{
   border-collapse: collapse;
-  font-size:14px;
+  background:#222;
 }
+
 td,th{
-  border:1px solid #ccc;
+  border:1px solid #444;
   padding:6px;
   text-align:center;
 }
-input{
-  width:55px;
-  text-align:center;
+
+.rankTable td{
+  font-size:18px;
 }
-.rank{
-  font-size:16px;
+
+.big .rankTable td{
+  font-size:32px;
+  padding:14px;
 }
+
+.big h2{font-size:40px}
+
 @media(max-width:800px){
   .container{flex-direction:column;}
 }
@@ -38,46 +71,45 @@ input{
 </head>
 <body>
 
-<h2>循環賽系統</h2>
-
-<div>
-玩家名稱：
-<input id="playerNames" style="width:300px"
-placeholder="用逗號分隔 例: A,B,C,D,E,F,G,H">
-<button onclick="setPlayers()">建立賽表</button>
+<div class="top">
+<input id="nameInput" placeholder="輸入名字加入">
+<button onclick="join()">加入玩家</button>
+<button onclick="reset()">重置</button>
+<button onclick="toggleProjector()">投影模式</button>
 </div>
 
-<br>
+<div id="qr"></div>
 
 <div class="container">
+
 <div>
-<h3>對戰輸入</h3>
+<h2>對戰</h2>
 <table id="scoreTable"></table>
 </div>
 
 <div>
-<h3>排名</h3>
-<table>
+<h2>排名</h2>
+<table class="rankTable">
 <thead>
 <tr>
-<th>#</th>
-<th>玩家</th>
-<th>勝</th>
-<th>敗</th>
-<th>小分</th>
+<th>#</th><th>玩家</th><th>勝</th><th>敗</th><th>小分</th>
 </tr>
 </thead>
 <tbody id="rankBody"></tbody>
 </table>
 </div>
+
 </div>
 
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
+<!-- QR -->
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs/qrcode.min.js"></script>
+
 <script>
-// 🔴 貼上你的 firebaseConfig
+// 🔴 貼你的config
 const firebaseConfig = {
   apiKey: "AIzaSyCtXt_zgFXgAaUJxq-WFPJvkAQ5agegDok",
   authDomain: "gscrl-ranking-system.firebaseapp.com",
@@ -89,28 +121,52 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
+const db=firebase.database();
 
 let players=[];
 let stats={};
 
-function setPlayers(){
-  const text=document.getElementById("playerNames").value;
-  players=text.split(",").map(x=>x.trim());
-  db.ref("tournament/players").set(players);
+// QR code
+new QRCode(document.getElementById("qr"), location.href);
+
+// 加入
+function join(){
+  const name=document.getElementById("nameInput").value.trim();
+  if(!name) return;
+
+  db.ref("tournament/players").once("value",snap=>{
+    let arr=snap.val()||[];
+    if(arr.includes(name)) return;
+
+    if(arr.length>=8){
+      alert("已滿8人");
+      return;
+    }
+
+    arr.push(name);
+    db.ref("tournament/players").set(arr);
+    document.getElementById("nameInput").value="";
+  });
+}
+
+// 重置
+function reset(){
+  if(!confirm("重置?")) return;
+  db.ref("tournament").set({});
 }
 
 // 監聽玩家
 db.ref("tournament/players").on("value",snap=>{
-  if(!snap.exists()) return;
-  players=snap.val();
-  buildTable();
+  players=snap.val()||[];
+  build();
 });
 
-// 建立表格
-function buildTable(){
+// 建立表
+function build(){
   const table=document.getElementById("scoreTable");
   table.innerHTML="";
+
+  if(players.length===0) return;
 
   let header="<tr><th></th>";
   players.forEach(p=> header+=`<th>${p}</th>`);
@@ -125,34 +181,34 @@ function buildTable(){
       }else if(i<j){
         row+=`<td>
         <input placeholder="2:1"
-        onchange="saveScore('${p1}','${p2}',this.value)">
+        onchange="save('${p1}','${p2}',this.value)">
         </td>`;
-      }else{
-        row+="<td></td>";
-      }
+      }else row+="<td></td>";
     });
     row+="</tr>";
     table.innerHTML+=row;
   });
 
-  loadScores();
+  load();
 }
 
-// 儲存
-function saveScore(p1,p2,val){
+function save(p1,p2,val){
   db.ref(`tournament/scores/${p1}_${p2}`).set(val);
 }
 
 // 監聽比分
-function loadScores(){
+function load(){
   db.ref("tournament/scores").on("value",snap=>{
-    if(!snap.exists()) return;
+    const data=snap.val()||{};
 
-    const data=snap.val();
     document.querySelectorAll("input").forEach(inp=>{
-      const p1=inp.closest("td").parentElement.cells[0].innerText;
-      const col=inp.parentElement.cellIndex;
-      const p2=players[col-1];
+      const row=inp.closest("tr").rowIndex-1;
+      const col=inp.parentElement.cellIndex-1;
+
+      if(row<0||col<0) return;
+
+      const p1=players[row];
+      const p2=players[col];
 
       const key=`${p1}_${p2}`;
       if(data[key]) inp.value=data[key];
@@ -193,10 +249,10 @@ function calc(){
     }
   });
 
-  renderRank();
+  render();
 }
 
-function renderRank(){
+function render(){
   const arr=players.map(p=>({name:p,...stats[p]}));
 
   arr.sort((a,b)=>{
@@ -209,7 +265,7 @@ function renderRank(){
 
   arr.forEach((p,i)=>{
     body.innerHTML+=`
-    <tr class="rank">
+    <tr>
     <td>${i+1}</td>
     <td>${p.name}</td>
     <td>${p.win}</td>
@@ -218,7 +274,11 @@ function renderRank(){
     </tr>`;
   });
 }
+
+// 投影模式
+function toggleProjector(){
+  document.body.classList.toggle("big");
+}
 </script>
 </body>
 </html>
-
